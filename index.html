@@ -2,143 +2,229 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Block Blast</title>
+<title>Retro Tetris</title>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
 body {
   margin:0;
-  font-family: Arial, sans-serif;
-  background: linear-gradient(135deg,#0f172a,#1e293b);
-  color: white;
-  text-align: center;
-  overflow: hidden;
+  font-family: 'Press Start 2P', cursive;
+  background:black;
+  text-align:center;
 }
 
 #menu {
-  position: absolute;
-  top:0; left:0; width:100%; height:100%;
-  display:flex; flex-direction:column;
-  justify-content:center; align-items:center;
-  background: rgba(0,0,0,0.7);
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  display:flex; flex-direction:column; justify-content:center; align-items:center;
+  background: rgba(0,0,0,0.9);
 }
 
 #menu h1 {
-  font-size: 60px;
+  font-size:48px;
   color:#38bdf8;
-  margin-bottom: 30px;
+  margin-bottom:30px;
+  text-shadow: 2px 2px #ff00ff;
 }
 
 #menu button {
-  padding: 20px 40px;
-  font-size: 30px;
+  padding:20px 40px;
+  font-size:20px;
   border:none;
-  border-radius:15px;
+  border-radius:10px;
   cursor:pointer;
-  background:#22c55e;
-  color:black;
-  font-weight:bold;
+  background:#0d6efd;
+  color:white;
+  font-family: 'Press Start 2P', cursive;
   transition:0.2s;
 }
 
 #menu button:hover { transform: scale(1.1); }
 
 #scoreBoard {
-  position:absolute; top:10px; left:10px; font-size:24px; background:#0f172a; padding:10px 15px; border-radius:10px; border:2px solid #38bdf8;
+  position:absolute; top:10px; left:10px; font-size:14px; color:white;
+  font-family:'Press Start 2P', cursive;
 }
 
-#gameCanvas {
+canvas {
   display:block;
-  background:#1e293b;
-  margin:0 auto;
+  margin: 50px auto;
+  border: 4px solid #38bdf8;
+  background:black;
 }
 </style>
 </head>
 <body>
 
 <div id="menu">
-  <h1>Block Blast</h1>
-  <button onclick="startGame()">Play</button>
+  <h1>RETRO TETRIS</h1>
+  <button onclick="startGame()">PLAY</button>
 </div>
 
-<div id="scoreBoard">Score: 0</div>
-<canvas id="gameCanvas" width="500" height="700"></canvas>
+<div id="scoreBoard">Score: 0 | High Score: 0</div>
+<canvas id="gameCanvas" width="300" height="600"></canvas>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
+const ROWS = 20;
+const COLS = 10;
+const BLOCK_SIZE = 30;
+let grid = Array.from({length:ROWS},()=>Array(COLS).fill(0));
 
-let shapes = [];
 let score = 0;
-let gameActive = false;
-let shapeTypes = [
-  {color:'#ef4444', size:50},
-  {color:'#f59e0b', size:50},
-  {color:'#22c55e', size:50},
-  {color:'#3b82f6', size:50},
-  {color:'#8b5cf6', size:50},
-  {color:'#ec4899', size:50},
-  {color:'#14b8a6', size:50},
-  {color:'#eab308', size:50},
-  {color:'#f43f5e', size:50},
-  {color:'#10b981', size:50}
+let highScore = localStorage.getItem("retroTetrisHighScore") || 0;
+document.getElementById("scoreBoard").innerText = `Score: ${score} | High Score: ${highScore}`;
+
+let shapes = [
+  [[1,1,1,1]], // I
+  [[2,2],[2,2]], // O
+  [[0,3,0],[3,3,3]], // T
+  [[0,4,4],[4,4,0]], // S
+  [[5,5,0],[0,5,5]], // Z
+  [[6,0,0],[6,6,6]], // J
+  [[0,0,7],[7,7,7]]  // L
 ];
+
+let colors = ["","#00ffff","#ffff00","#ff00ff","#00ff00","#ff0000","#0000ff","#ff8000"];
+let textures = [];
+
+for(let c=1;c<colors.length;c++){
+  let t=document.createElement("canvas");
+  t.width=t.height=BLOCK_SIZE;
+  let tc=t.getContext("2d");
+  tc.fillStyle=colors[c];
+  tc.fillRect(0,0,BLOCK_SIZE,BLOCK_SIZE);
+  tc.fillStyle="rgba(255,255,255,0.2)";
+  for(let i=0;i<5;i++){
+    tc.fillRect(Math.random()*BLOCK_SIZE, Math.random()*BLOCK_SIZE,2,2);
+  }
+  textures[c]=t;
+}
+
+let currentShape, currentX, currentY;
+
+function randomShape(){
+  const s = shapes[Math.floor(Math.random()*shapes.length)];
+  return JSON.parse(JSON.stringify(s));
+}
 
 function startGame(){
   document.getElementById("menu").style.display="none";
-  shapes=[];
+  grid = Array.from({length:ROWS},()=>Array(COLS).fill(0));
   score=0;
-  gameActive=true;
   spawnShape();
-  requestAnimationFrame(gameLoop);
-  updateScore();
+  draw();
+  gameInterval = setInterval(gameLoop,500);
 }
 
 function spawnShape(){
-  if(!gameActive) return;
-  const type = shapeTypes[Math.floor(Math.random()*shapeTypes.length)];
-  const x = Math.random()*(canvas.width-type.size);
-  shapes.push({x:x, y:0, size:type.size, color:type.color, speed: Math.random()*2 + 1});
-  setTimeout(spawnShape, 800); // new shape every 0.8s
+  currentShape=randomShape();
+  currentX = Math.floor(COLS/2) - Math.floor(currentShape[0].length/2);
+  currentY = 0;
 }
 
-canvas.addEventListener("click", function(e){
-  const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
-  for(let i=shapes.length-1; i>=0; i--){
-    const s = shapes[i];
-    if(mx > s.x && mx < s.x+s.size && my > s.y && my < s.y+s.size){
-      shapes.splice(i,1);
-      score+=10;
-      updateScore();
-      break;
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // draw grid blocks
+  for(let r=0;r<ROWS;r++){
+    for(let c=0;c<COLS;c++){
+      if(grid[r][c]!==0){
+        ctx.drawImage(textures[grid[r][c]], c*BLOCK_SIZE, r*BLOCK_SIZE);
+        ctx.strokeStyle="#000";
+        ctx.strokeRect(c*BLOCK_SIZE, r*BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+      }
     }
   }
-});
 
-function updateScore(){
-  document.getElementById("scoreBoard").innerText = "Score: "+score;
+  // draw current shape
+  for(let r=0;r<currentShape.length;r++){
+    for(let c=0;c<currentShape[r].length;c++){
+      if(currentShape[r][c]!==0){
+        ctx.drawImage(textures[currentShape[r][c]], (currentX+c)*BLOCK_SIZE, (currentY+r)*BLOCK_SIZE);
+        ctx.strokeStyle="#000";
+        ctx.strokeRect((currentX+c)*BLOCK_SIZE, (currentY+r)*BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+      }
+    }
+  }
+
+  document.getElementById("scoreBoard").innerText = `Score: ${score} | High Score: ${highScore}`;
+}
+
+function collide(){
+  for(let r=0;r<currentShape.length;r++){
+    for(let c=0;c<currentShape[r].length;c++){
+      if(currentShape[r][c]!==0){
+        let x=currentX+c;
+        let y=currentY+r;
+        if(y>=ROWS || x<0 || x>=COLS || grid[y][x]!==0) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function merge(){
+  for(let r=0;r<currentShape.length;r++){
+    for(let c=0;c<currentShape[r].length;c++){
+      if(currentShape[r][c]!==0){
+        grid[currentY+r][currentX+c] = currentShape[r][c];
+      }
+    }
+  }
+}
+
+function rotate(shape){
+  const N=shape.length;
+  let newShape = Array.from({length:N},()=>Array(N).fill(0));
+  for(let r=0;r<N;r++){
+    for(let c=0;c<N;c++){
+      newShape[c][N-1-r]=shape[r][c];
+    }
+  }
+  return newShape;
+}
+
+function clearLines(){
+  let lines = 0;
+  for(let r=ROWS-1;r>=0;r--){
+    if(grid[r].every(c=>c!==0)){
+      grid.splice(r,1);
+      grid.unshift(Array(COLS).fill(0));
+      lines++;
+      r++;
+    }
+  }
+  score += lines*100;
+  if(score>highScore){highScore=score; localStorage.setItem("retroTetrisHighScore",highScore);}
 }
 
 function gameLoop(){
-  if(!gameActive) return;
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  for(let i=shapes.length-1;i>=0;i--){
-    const s=shapes[i];
-    s.y+=s.speed;
-    ctx.fillStyle = s.color;
-    ctx.fillRect(s.x,s.y,s.size,s.size);
-
-    if(s.y+s.size>=canvas.height){
-      gameActive=false;
+  currentY++;
+  if(collide()){
+    currentY--;
+    merge();
+    clearLines();
+    spawnShape();
+    if(collide()){
+      clearInterval(gameInterval);
       alert("Game Over! Score: "+score);
       document.getElementById("menu").style.display="flex";
-      return;
     }
   }
-
-  requestAnimationFrame(gameLoop);
+  draw();
 }
+
+// controls
+document.addEventListener("keydown",e=>{
+  if(!currentShape) return;
+  if(e.key==="ArrowLeft"){ currentX--; if(collide()) currentX++; }
+  else if(e.key==="ArrowRight"){ currentX++; if(collide()) currentX--; }
+  else if(e.key==="ArrowDown"){ currentY++; if(collide()) currentY--; }
+  else if(e.key==="ArrowUp"){ let rotated = rotate(currentShape); let temp=currentShape; currentShape=rotated; if(collide()) currentShape=temp; }
+  draw();
+});
+
 </script>
 </body>
 </html>
